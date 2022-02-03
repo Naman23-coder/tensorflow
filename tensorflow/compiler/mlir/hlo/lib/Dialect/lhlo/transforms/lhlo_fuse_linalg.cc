@@ -16,6 +16,8 @@ limitations under the License.
 // This file implements logic for fusing linalg ops obtained after LHLO
 // lowering.
 
+#include <utility>
+
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"
 #include "mlir-hlo/Dialect/lhlo/transforms/PassDetail.h"
@@ -52,8 +54,8 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
     use_parallel_loops_.setValue(use_parallel_loops);
   }
 
-  void runOnFunction() override {
-    auto func = getFunction();
+  void runOnOperation() override {
+    auto func = getOperation();
 
     // TODO(pifon): Remove assumption that the function has a single block.
     if (!llvm::hasSingleElement(func)) {
@@ -84,7 +86,7 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
                                          result_buffers.end());
     while (!worklist.empty()) {
       Value result = worklist.pop_back_val();
-      auto definingOp = result.getDefiningOp();
+      auto* definingOp = result.getDefiningOp();
       if (!definingOp) {
         continue;
       }
@@ -166,7 +168,8 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
       }
     });
     auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-    (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
+      return signalPassFailure();
 
     // Fuse producers of tiled linalg ops.
     llvm::SmallDenseSet<Operation*> erase_set;
@@ -178,16 +181,17 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
         linalg::LinalgDependenceGraph graph(aliases, linalg_ops);
         auto info = fuseProducerOfBuffer(b, *inputOperand, graph);
         if (failed(info)) continue;
-        auto originalOp = info->originalProducer.getOperation();
+        auto* originalOp = info->originalProducer.getOperation();
         erase_set.insert(originalOp);
-        auto originalOpInLinalgOpsVector =
+        auto* originalOpInLinalgOpsVector =
             std::find_if(linalg_ops.begin(), linalg_ops.end(),
                          [&](const Operation* op) { return op == originalOp; });
         *originalOpInLinalgOpsVector = info->fusedProducer.getOperation();
       }
 
       auto patterns = linalg::getLinalgTilingCanonicalizationPatterns(ctx);
-      (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
+      if (failed(applyPatternsAndFoldGreedily(func, std::move(patterns))))
+        return signalPassFailure();
     }
     for (auto* e : erase_set) e->erase();
   }
@@ -197,7 +201,8 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
     auto loopType = use_parallel_loops_
                         ? linalg::LinalgTilingLoopType::ParallelLoops
                         : linalg::LinalgTilingLoopType::Loops;
-    return succeeded(linalg::tileLinalgOp(*b, op,
+    IRRewriter rewriter(*b);
+    return succeeded(linalg::tileLinalgOp(rewriter, op,
                                           linalg::LinalgTilingOptions()
                                               .setTileSizes(tile_sizes)
                                               .setLoopType(loopType)));
@@ -206,7 +211,7 @@ class LhloFuseLinalgPass : public LhloFuseLinalgPassBase<LhloFuseLinalgPass> {
 
 }  // namespace
 
-std::unique_ptr<FunctionPass> createLhloFuseLinalgPass(
+std::unique_ptr<OperationPass<FuncOp>> createLhloFuseLinalgPass(
     bool use_parallel_loops, ArrayRef<unsigned> tile_sizes) {
   return std::make_unique<LhloFuseLinalgPass>(use_parallel_loops, tile_sizes);
 }

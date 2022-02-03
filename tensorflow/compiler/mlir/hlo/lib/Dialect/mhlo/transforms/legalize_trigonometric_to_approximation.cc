@@ -16,6 +16,8 @@ limitations under the License.
 // This file implements the lowering for trigonometric standard ops to
 // approximations.
 
+#include <utility>
+
 #include "mlir-hlo/Dialect/mhlo/transforms/PassDetail.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/passes.h"
 #include "mlir-hlo/Dialect/mhlo/transforms/rewriters.h"
@@ -160,10 +162,13 @@ struct LegalizeTrigonometricToApproximationPass
     : public LegalizeTanhToApproximationPassBase<
           LegalizeTrigonometricToApproximationPass> {
   /// Perform the lowering of standard dialect operations to approximations.
-  void runOnFunction() override {
-    OwningRewritePatternList patterns(&getContext());
+  void runOnOperation() override {
+    RewritePatternSet patterns(&getContext());
     PopulateTrigonometricToApproximationPatterns(&getContext(), &patterns);
-    (void)applyPatternsAndFoldGreedily(getFunction(), std::move(patterns));
+    if (failed(applyPatternsAndFoldGreedily(getOperation(),
+                                            std::move(patterns)))) {
+      return signalPassFailure();
+    }
   }
 };
 
@@ -174,8 +179,8 @@ createLegalizeTrigonometricToApproximationPass() {
   return std::make_unique<LegalizeTrigonometricToApproximationPass>();
 }
 
-void PopulateTrigonometricToApproximationPatterns(
-    mlir::MLIRContext *context, OwningRewritePatternList *patterns) {
+void PopulateTrigonometricToApproximationPatterns(mlir::MLIRContext *context,
+                                                  RewritePatternSet *patterns) {
   // clang-format off
   patterns->insert<ApproximateTanhLowering>(context);
   // clang-format on

@@ -1063,7 +1063,7 @@ struct Options {
   // This variable is used by the cost analysis in estimating how many times
   // each while loop will execute. Nested loops will be assumed to have
   // executed pow(while_execution_count, nesting_level) times.
-  uint64 xla_tpu_memory_space_assignment_while_execution_count = 5ULL;
+  uint64_t xla_tpu_memory_space_assignment_while_execution_count = 5ULL;
 
   float async_copy_bandwidth_bytes_per_second = 0.0f;
 
@@ -1119,7 +1119,7 @@ struct AsynchronousCopy {
   std::tuple<int64_t, int64_t, float, MemorySpaceAssignment::MemorySpace,
              int64_t>
   AsTuple() const {
-    return {start_time, end_time, resource, destination, id};
+    return std::make_tuple(start_time, end_time, resource, destination, id);
   }
 };
 

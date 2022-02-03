@@ -178,6 +178,11 @@ void SingleOpModel::BuildInterpreter(std::vector<std::vector<int>> input_shapes,
                                      bool allow_fp32_relax_to_fp16,
                                      bool apply_delegate,
                                      bool allocate_and_delegate) {
+  input_shapes_ = input_shapes;
+  allow_fp32_relax_to_fp16_ = allow_fp32_relax_to_fp16;
+  apply_delegate_ = apply_delegate;
+  allocate_and_delegate_ = allocate_and_delegate;
+
   auto opcodes = builder_.CreateVector(opcodes_);
   auto operators = builder_.CreateVector(operators_);
   auto tensors = builder_.CreateVector(tensors_);
@@ -390,7 +395,7 @@ void SingleOpModel::ExpectOpAcceleratedWithNnapi(const std::string& test_id) {
   TFLITE_LOG(INFO) << "Validating acceleration";
   const NnApi* nnapi = NnApiImplementation();
   if (nnapi && nnapi->nnapi_exists &&
-      nnapi->nnapi_runtime_feature_level >=
+      nnapi->android_sdk_version >=
           validation_params.value().MinAndroidSdkVersion()) {
     EXPECT_EQ(CountPartitionsDelegatedTo(interpreter_.get(), delegate_), 1)
         << "Expecting operation to be accelerated but cannot find a partition "

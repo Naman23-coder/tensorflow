@@ -92,7 +92,7 @@ bool L2NormalizeReduceAxis(Value sq_op, DenseElementsAttr axis) {
 using ::llvm::cast;
 
 // Optimize TFLite operations in functions.
-class OptimizePass : public PassWrapper<OptimizePass, FunctionPass> {
+class OptimizePass : public PassWrapper<OptimizePass, OperationPass<FuncOp>> {
  public:
   OptimizePass() = default;
   OptimizePass(const OptimizePass &) {}
@@ -110,7 +110,7 @@ class OptimizePass : public PassWrapper<OptimizePass, FunctionPass> {
     return "Optimize within the TensorFlow Lite dialect";
   }
 
-  void runOnFunction() override;
+  void runOnOperation() override;
 
  private:
   Option<bool> enable_canonicalization_{
@@ -1582,19 +1582,19 @@ using FuseBinaryOpToFollowingConv2D = FuseBinaryOpToFollowingAffineOp<Conv2DOp>;
 
 // Adds canonicalization patterns to the list of patterns.
 void AddCanonicalizationPatterns(MLIRContext *context,
-                                 OwningRewritePatternList *patterns) {
+                                 RewritePatternSet *patterns) {
   for (auto op : context->getRegisteredOperations())
     op.getCanonicalizationPatterns(*patterns, context);
 }
 
-void OptimizePass::runOnFunction() {
-  OwningRewritePatternList patterns(&getContext());
+void OptimizePass::runOnOperation() {
+  RewritePatternSet patterns(&getContext());
   auto *ctx = &getContext();
-  auto func = getFunction();
+  auto func = getOperation();
 
   // Merge reshapes into fully connected ops before we start moving them past
   // binary ops.
-  OwningRewritePatternList phase_0_patterns(&getContext());
+  RewritePatternSet phase_0_patterns(&getContext());
   phase_0_patterns.insert<RemoveReshapeAfterFullyConnected,
                           RemoveReshapeBeforeFullyConnected>(ctx);
   (void)applyPatternsAndFoldGreedily(func, std::move(phase_0_patterns));
@@ -1612,7 +1612,7 @@ void OptimizePass::runOnFunction() {
   (void)applyPatternsAndFoldGreedily(func, std::move(patterns));
 
   // Fuse the binary ops with the following ops.
-  OwningRewritePatternList phase_2_patterns(&getContext());
+  RewritePatternSet phase_2_patterns(&getContext());
   TFL::populateWithGenerated(phase_2_patterns);
   phase_2_patterns.insert<
       ScalarizeSplatConstantForAdd, ScalarizeSplatConstantForSub,

@@ -1133,8 +1133,8 @@ REGISTER_OP("ArgMax")
     .Input("dimension: Tidx")
     .Output("output: output_type")
     .Attr("T: {numbertype, bool}")
-    .Attr("Tidx: {int32, int64} = DT_INT32")
-    .Attr("output_type: {int32, int64} = DT_INT64")
+    .Attr("Tidx: {int16, int32, int64} = DT_INT32")
+    .Attr("output_type: {int16, int32, int64} = DT_INT64")
     .SetShapeFn(ArgOpShape);
 
 REGISTER_OP("ArgMin")
@@ -1489,6 +1489,13 @@ Status RangeSize(const Tensor* start_t, const Tensor* limit_t,
                       Eigen::numext::abs(delta))
                    : (Eigen::numext::ceil(
                          Eigen::numext::abs((limit - start) / delta))));
+
+  // Undefined behaviour if size will not fit into int64_t
+  if (size > std::numeric_limits<int64_t>::max()) {
+    return errors::InvalidArgument("Requires ((limit - start) / delta) <= ",
+                                   std::numeric_limits<int64_t>::max());
+  }
+
   c->set_output(0, c->Vector(static_cast<int64_t>(size)));
   return Status::OK();
 }
@@ -1502,7 +1509,8 @@ REGISTER_OP("Range")
     .Output("output: Tidx")
     .Attr(
         "Tidx: "
-        "{bfloat16, half, float, double, int8, int16, int32, int64, uint32} = "
+        "{bfloat16, half, float, double, int8, int16, int32, int64, uint16, "
+        "uint32} = "
         "DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle unused;
@@ -1529,6 +1537,8 @@ REGISTER_OP("Range")
         return RangeSize<int8>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_INT64) {
         return RangeSize<int64_t>(start_t, limit_t, delta_t, c);
+      } else if (dtype == DT_UINT16) {
+        return RangeSize<uint16>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_UINT32) {
         return RangeSize<uint32>(start_t, limit_t, delta_t, c);
       } else if (dtype == DT_FLOAT) {
